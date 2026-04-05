@@ -26,10 +26,20 @@ dependencies:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
+  # ── State Management ──────────────────────────────
   flutter_bloc: ^9.1.1
   equatable: ^2.0.8
+ # ── Utilities ────────────────────────────────────
   uuid: ^4.5.3
+  build_runner: ^2.13.1
+  get_it: ^9.2.1
+   # ── Error Handling ───────────────────────────────
   dartz: ^0.10.1
+   # ── Local Storage ────────────────────────────────
+  hive: ^2.2.3
+  path_provider: ^2.1.4
+
+
 
 dev_dependencies:
   flutter_test:
