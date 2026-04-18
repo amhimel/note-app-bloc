@@ -39,6 +39,13 @@ dependencies:
   hive: ^2.2.3
   path_provider: ^2.1.4
 
+    # ── Firebase ──────────────────────────────────────
+  firebase_core: ^3.6.0         # Firebase initialize করতে
+  cloud_firestore: ^5.4.4       # Firestore database
+ 
+  # ── Connectivity ──────────────────────────────────
+  connectivity_plus: ^6.0.5     # Internet status + stream
+
 
 
 dev_dependencies:

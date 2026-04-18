@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:note_app_bloc/injection_container.dart';
@@ -22,6 +23,11 @@ void main() async {
 
   // Portrait mode lock (optional)
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+
+  // Firebase initialize করো — সবার আগে
+  // google-services.json (Android) বা GoogleService-Info.plist (iOS)
+  // project এ add করা থাকতে হবে।
+  await Firebase.initializeApp();
 
   // Hive initialize + get_it এ সব dependencies register করো
   await initDependencies();

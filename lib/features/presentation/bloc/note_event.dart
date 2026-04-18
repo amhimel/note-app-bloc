@@ -2,8 +2,6 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
 import '../../domain/entities/note_entity.dart';
 
-
-//
 // Event = UI থেকে BLoC এ পাঠানো "কী করতে চাই" এর নাম।
 //
 // Clean Architecture তে BLoC জানে না UI কেমন দেখতে।
@@ -79,4 +77,24 @@ class NotesSearched extends NoteEvent {
 // ──────────────────────────────────────────────
 class NoteSearchCleared extends NoteEvent {
   const NoteSearchCleared();
+}
+
+// ──────────────────────────────────────────────
+// ConnectivityChanged — Internet status বদলালে
+// ──────────────────────────────────────────────
+// NetworkInfo এর stream থেকে BLoC এ এই event আসবে।
+// isOnline=true হলে BLoC pending notes sync করবে।
+class ConnectivityChanged extends NoteEvent {
+  final bool isOnline;
+  const ConnectivityChanged(this.isOnline);
+
+  @override
+  List<Object?> get props => [isOnline];
+}
+
+// ──────────────────────────────────────────────
+// SyncPendingNotes — Manual sync trigger
+// ──────────────────────────────────────────────
+class SyncPendingNotes extends NoteEvent {
+  const SyncPendingNotes();
 }

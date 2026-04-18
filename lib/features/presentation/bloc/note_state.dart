@@ -36,34 +36,49 @@ class NoteLoading extends NoteState {
 // এই State সবচেয়ে বেশি ব্যবহার হয়।
 // notes, filteredNotes, searchQuery — সব এখানে।
 class NoteLoaded extends NoteState {
-  final List<NoteEntity> notes; // সব notes
-  final List<NoteEntity> filteredNotes; // search result
+  final List<NoteEntity> notes;
+  final List<NoteEntity> filteredNotes;
   final String searchQuery;
+  final bool isOnline; // ← নতুন: UI তে offline indicator দেখাতে
+  final bool isSyncing; // ← নতুন: sync চলছে কিনা
 
   const NoteLoaded({
     required this.notes,
     this.filteredNotes = const [],
     this.searchQuery = '',
+    this.isOnline = true,
+    this.isSyncing = false,
   });
 
-  // search চলছে কিনা
   bool get isSearching => searchQuery.isNotEmpty;
 
-  // UI কোন list দেখাবে সেটা State নিজেই জানে
   List<NoteEntity> get displayNotes => isSearching ? filteredNotes : notes;
+
+  // Unsynced notes এর count — UI তে badge দেখাতে পারো
+  int get unsyncedCount => notes.where((n) => !n.isSynced).length;
 
   NoteLoaded copyWith({
     List<NoteEntity>? notes,
     List<NoteEntity>? filteredNotes,
     String? searchQuery,
+    bool? isOnline,
+    bool? isSyncing,
   }) => NoteLoaded(
     notes: notes ?? this.notes,
     filteredNotes: filteredNotes ?? this.filteredNotes,
     searchQuery: searchQuery ?? this.searchQuery,
+    isOnline: isOnline ?? this.isOnline,
+    isSyncing: isSyncing ?? this.isSyncing,
   );
 
   @override
-  List<Object?> get props => [notes, filteredNotes, searchQuery];
+  List<Object?> get props => [
+    notes,
+    filteredNotes,
+    searchQuery,
+    isOnline,
+    isSyncing,
+  ];
 }
 
 // ──────────────────────────────────────────────

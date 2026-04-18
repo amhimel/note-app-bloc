@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:note_app_bloc/features/domain/entities/note_entity.dart';
+
 class NoteCard extends StatelessWidget {
   final NoteEntity note;
   final VoidCallback onTap;

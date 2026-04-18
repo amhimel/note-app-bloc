@@ -1,29 +1,23 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
+
 import '../../domain/entities/note_entity.dart';
-
-// Model = Entity + Database conversion logic।
-
 
 class NoteModel extends NoteEntity {
   // Color Hive এ store করা যায় না, তাই int হিসেবে রাখি
   final int colorValue;
+  final bool synced;
 
   NoteModel({
-    required String id,
-    required String title,
-    required String content,
+    required super.id,
+    required super.title,
+    required super.content,
     required this.colorValue,
-    required DateTime createdAt,
-    required DateTime updatedAt,
-  }) : super(
-         id: id,
-         title: title,
-         content: content,
-         color: Color(colorValue),
-         createdAt: createdAt,
-         updatedAt: updatedAt,
-       );
+    required super.createdAt,
+    required super.updatedAt,
+    this.synced = false,
+  }) : super(color: Color(colorValue), isSynced: synced);
 
   factory NoteModel.fromEntity(NoteEntity entity) => NoteModel(
     id: entity.id,
@@ -32,7 +26,35 @@ class NoteModel extends NoteEntity {
     colorValue: entity.color.value,
     createdAt: entity.createdAt,
     updatedAt: entity.updatedAt,
+    synced: entity.isSynced,
   );
+
+  // Firestore Document → NoteModel
+  // Firestore থেকে data আনার সময় এই factory ব্যবহার হবে।
+  // Firestore এ DateTime, Timestamp হিসেবে store হয়।
+  factory NoteModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data()!;
+    return NoteModel(
+      id: doc.id,
+      title: data['title'] as String,
+      content: data['content'] as String,
+      colorValue: data['color'] as int,
+      // Firestore Timestamp → DateTime
+      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      updatedAt: (data['updatedAt'] as Timestamp).toDate(),
+      synced: true,
+    );
+  }
+
+  // NoteModel → Firestore Map
+  Map<String, dynamic> toFirestore() => {
+    'title': title,
+    'content': content,
+    'color': colorValue,
+    // DateTime → Firestore Timestamp
+    'createdAt': Timestamp.fromDate(createdAt),
+    'updatedAt': Timestamp.fromDate(updatedAt),
+  };
 
   NoteEntity toEntity() => NoteEntity(
     id: id,
@@ -41,9 +63,9 @@ class NoteModel extends NoteEntity {
     color: Color(colorValue),
     createdAt: createdAt,
     updatedAt: updatedAt,
+    isSynced: synced,
   );
 }
-
 
 // Hive নিজে Custom class জানে না।
 // TypeAdapter বলে দেয়: "NoteModel কীভাবে read/write করবে।"
@@ -68,6 +90,7 @@ class NoteModelAdapter extends TypeAdapter<NoteModel> {
     // DateTime Hive এ int হিসেবে store হয়, তাই convert করতে হয়
     final createdAt = DateTime.fromMillisecondsSinceEpoch(reader.readInt());
     final updatedAt = DateTime.fromMillisecondsSinceEpoch(reader.readInt());
+    final synced = reader.availableBytes > 0 ? reader.readBool() : false;
 
     return NoteModel(
       id: id,
@@ -76,6 +99,7 @@ class NoteModelAdapter extends TypeAdapter<NoteModel> {
       colorValue: colorValue,
       createdAt: createdAt,
       updatedAt: updatedAt,
+      synced: synced,
     );
   }
 
@@ -89,5 +113,6 @@ class NoteModelAdapter extends TypeAdapter<NoteModel> {
     // DateTime → int (milliseconds since epoch)
     writer.writeInt(obj.createdAt.millisecondsSinceEpoch);
     writer.writeInt(obj.updatedAt.millisecondsSinceEpoch);
+    writer.writeBool(obj.synced);
   }
 }
