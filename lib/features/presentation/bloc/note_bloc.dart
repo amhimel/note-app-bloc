@@ -1,66 +1,88 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:note_app_bloc/core/constants/app_colors.dart';
 import '../../domain/entities/note_entity.dart';
 import '../../domain/usecases/get_notes.dart';
 import '../../domain/usecases/add_note.dart';
 import '../../domain/usecases/update_note.dart';
 import '../../domain/usecases/delete_note.dart';
+import '../../../../core/network/network_info.dart';
 import '../../../../core/usecases/usecase.dart';
-import '../../../../core/constants/app_colors.dart';
+import '../../data/repositories/note_repository_impl.dart';
 import 'note_event.dart';
 import 'note_state.dart';
 
-// BLoC এর একমাত্র কাজ:
-//   Event receive → UseCase call → State emit
+// =================================================================
+// 🧠 note_bloc.dart — Updated with Connectivity + Sync
+// =================================================================
 //
-// BLoC নিজে কোনো Business Logic রাখে না।
-// সব Logic UseCase এ আছে।
-//
-// ──────────────────────────────────────────────
-// Clean Architecture তে BLoC:
-//
-//   UI  →(Event)→  BLoC  →(UseCase)→  Repository  →  DataSource
-//   UI  ←(State)←  BLoC  ←(Either)←  Repository  ←  DataSource
-// ──────────────────────────────────────────────
-//
-// Dependency Injection (get_it) দিয়ে BLoC তৈরি:
-//   sl<NoteBloc>() → injection_container.dart থেকে
+// নতুন দায়িত্ব:
+//   1. NetworkInfo stream listen করো
+//   2. Internet এলে → pending notes sync করো
+//   3. State এ isOnline রাখো যাতে UI জানতে পারে
 
 class NoteBloc extends Bloc<NoteEvent, NoteState> {
-  // UseCases — Constructor Injection দিয়ে inject করা হয়
   final GetNotes _getNotes;
   final AddNote _addNote;
   final UpdateNote _updateNote;
   final DeleteNote _deleteNote;
+  final NetworkInfo _networkInfo;
+  final NoteRepositoryImpl _repository; // syncPendingNotes এর জন্য
 
-  int _colorIndex = 0; // Note card color cycling
+  int _colorIndex = 0;
+  StreamSubscription<bool>? _connectivitySub; // stream subscription
 
   NoteBloc({
     required GetNotes getNotes,
     required AddNote addNote,
     required UpdateNote updateNote,
     required DeleteNote deleteNote,
+    required NetworkInfo networkInfo,
+    required NoteRepositoryImpl repository,
   }) : _getNotes = getNotes,
        _addNote = addNote,
        _updateNote = updateNote,
        _deleteNote = deleteNote,
+       _networkInfo = networkInfo,
+       _repository = repository,
        super(const NoteInitial()) {
-    // প্রতিটি Event এর জন্য handler register করো
     on<NotesFetched>(_onNotesFetched);
     on<NoteAdded>(_onNoteAdded);
     on<NoteUpdated>(_onNoteUpdated);
     on<NoteDeleted>(_onNoteDeleted);
     on<NotesSearched>(_onNotesSearched);
     on<NoteSearchCleared>(_onNoteSearchCleared);
+    on<ConnectivityChanged>(_onConnectivityChanged); // ← নতুন
+    on<SyncPendingNotes>(_onSyncPendingNotes); // ← নতুন
+
+    // Connectivity stream শুনতে শুরু করো
+    _listenToConnectivity();
   }
 
   // ──────────────────────────────────────────────
-  // Helper: current notes list সহজে পাওয়া
+  // Connectivity Stream Listener
+  // ──────────────────────────────────────────────
+  // BLoC তৈরি হওয়ার সাথে সাথে network change শোনা শুরু।
+  // Status বদলালে ConnectivityChanged event পাঠাও।
+  void _listenToConnectivity() {
+    _connectivitySub = _networkInfo.onConnectivityChanged.listen(
+      (isOnline) => add(ConnectivityChanged(isOnline)),
+    );
+  }
+
+  // ──────────────────────────────────────────────
+  // Helper: typed current notes
   // ──────────────────────────────────────────────
   List<NoteEntity> get _currentNotes {
     if (state is NoteLoaded) return (state as NoteLoaded).notes;
     if (state is NoteActionSuccess) return (state as NoteActionSuccess).notes;
     return const <NoteEntity>[];
+  }
+
+  bool get _currentIsOnline {
+    if (state is NoteLoaded) return (state as NoteLoaded).isOnline;
+    return true;
   }
 
   // ══════════════════════════════════════════════
@@ -71,16 +93,12 @@ class NoteBloc extends Bloc<NoteEvent, NoteState> {
     Emitter<NoteState> emit,
   ) async {
     emit(const NoteLoading());
-
-    // UseCase call — Either<Failure, List<NoteEntity>> return করে
+    final online = await _networkInfo.isConnected;
     final result = await _getNotes(NoParams());
 
-    // fold = Either এর দুটো case handle করা
-    //   Left  (failure) → error state
-    //   Right (success) → loaded state
     result.fold(
       (failure) => emit(NoteError(failure.message)),
-      (notes) => emit(NoteLoaded(notes: notes)),
+      (notes) => emit(NoteLoaded(notes: notes, isOnline: online)),
     );
   }
 
@@ -97,13 +115,9 @@ class NoteBloc extends Bloc<NoteEvent, NoteState> {
     );
 
     result.fold((failure) => emit(NoteError(failure.message)), (newNote) {
-      // নতুন note list এর শুরুতে রাখো (latest first)
       final updated = <NoteEntity>[newNote, ..._currentNotes];
-
-      // প্রথমে ActionSuccess emit করো (snackbar এর জন্য)
       emit(NoteActionSuccess(message: 'Note saved!', notes: updated));
-      // তারপর Loaded emit করো (UI এর জন্য)
-      emit(NoteLoaded(notes: updated));
+      emit(NoteLoaded(notes: updated, isOnline: _currentIsOnline));
     });
   }
 
@@ -117,14 +131,11 @@ class NoteBloc extends Bloc<NoteEvent, NoteState> {
     final result = await _updateNote(UpdateParams(event.note));
 
     result.fold((failure) => emit(NoteError(failure.message)), (updatedNote) {
-      // ✅ _currentNotes এখন List<NoteEntity>, তাই n এর type NoteEntity
-      // map এ পুরানো note replace করো — id match করলে updatedNote দাও
       final updatedList = _currentNotes.map((n) {
         return n.id == updatedNote.id ? updatedNote : n;
       }).toList();
-
       emit(NoteActionSuccess(message: 'Note updated!', notes: updatedList));
-      emit(NoteLoaded(notes: updatedList));
+      emit(NoteLoaded(notes: updatedList, isOnline: _currentIsOnline));
     });
   }
 
@@ -138,17 +149,60 @@ class NoteBloc extends Bloc<NoteEvent, NoteState> {
     final result = await _deleteNote(DeleteNoteParam(event.id));
 
     result.fold((failure) => emit(NoteError(failure.message)), (_) {
-      // ✅ _currentNotes এখন List<NoteEntity>
-      // where() দিয়ে deleted note বাদ দাও
       final updatedList = _currentNotes.where((n) => n.id != event.id).toList();
-
       emit(NoteActionSuccess(message: 'Note deleted!', notes: updatedList));
-      emit(NoteLoaded(notes: updatedList));
+      emit(NoteLoaded(notes: updatedList, isOnline: _currentIsOnline));
     });
   }
 
   // ══════════════════════════════════════════════
-  // Handler: NotesSearched
+  // Handler: ConnectivityChanged ← সবচেয়ে গুরুত্বপূর্ণ নতুন handler
+  // ══════════════════════════════════════════════
+  Future<void> _onConnectivityChanged(
+    ConnectivityChanged event,
+    Emitter<NoteState> emit,
+  ) async {
+    if (state is! NoteLoaded) return;
+    final currentState = state as NoteLoaded;
+
+    if (event.isOnline) {
+      // ✅ Internet এলো — isSyncing দেখাও
+      emit(currentState.copyWith(isOnline: true, isSyncing: true));
+
+      // Pending notes sync করো
+      await _repository.syncPendingNotes();
+
+      // Sync শেষে Firestore থেকে fresh data আনো
+      final result = await _getNotes(NoParams());
+      result.fold(
+        (failure) =>
+            emit(currentState.copyWith(isOnline: true, isSyncing: false)),
+        (notes) =>
+            emit(NoteLoaded(notes: notes, isOnline: true, isSyncing: false)),
+      );
+    } else {
+      // ❌ Internet গেলো — শুধু isOnline=false করো
+      emit(currentState.copyWith(isOnline: false, isSyncing: false));
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  // Handler: SyncPendingNotes — manual trigger
+  // ══════════════════════════════════════════════
+  Future<void> _onSyncPendingNotes(
+    SyncPendingNotes event,
+    Emitter<NoteState> emit,
+  ) async {
+    if (state is! NoteLoaded) return;
+    final currentState = state as NoteLoaded;
+
+    emit(currentState.copyWith(isSyncing: true));
+    await _repository.syncPendingNotes();
+    emit(currentState.copyWith(isSyncing: false));
+  }
+
+  // ══════════════════════════════════════════════
+  // Search handlers (unchanged)
   // ══════════════════════════════════════════════
   Future<void> _onNotesSearched(
     NotesSearched event,
@@ -173,26 +227,34 @@ class NoteBloc extends Bloc<NoteEvent, NoteState> {
     );
   }
 
-  // ══════════════════════════════════════════════
-  // Handler: NoteSearchCleared
-  // ══════════════════════════════════════════════
   Future<void> _onNoteSearchCleared(
     NoteSearchCleared event,
     Emitter<NoteState> emit,
   ) async {
     if (state is NoteLoaded) {
-      final currentState = state as NoteLoaded;
-      emit(currentState.copyWith(filteredNotes: const [], searchQuery: ''));
+      emit(
+        (state as NoteLoaded).copyWith(
+          filteredNotes: const [],
+          searchQuery: '',
+        ),
+      );
     }
   }
 
-  // ──────────────────────────────────────────────
-  // Note color cycling helper
   // ──────────────────────────────────────────────
   Color getNextColor() {
     final color =
         AppColors.noteColors[_colorIndex % AppColors.noteColors.length];
     _colorIndex++;
     return color;
+  }
+
+  // ──────────────────────────────────────────────
+  // BLoC close হলে stream subscription cancel করো
+  // Memory leak এড়াতে এটা জরুরি
+  @override
+  Future<void> close() {
+    _connectivitySub?.cancel();
+    return super.close();
   }
 }

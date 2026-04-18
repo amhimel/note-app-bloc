@@ -90,6 +90,8 @@ class _NotesPageState extends State<NotesPage> {
                   children: [
                     const SizedBox(height: 16),
                     _buildAppBar(context),
+                    // Offline / Syncing banner
+                    if (state is NoteLoaded) _buildStatusBanner(state),
                     const SizedBox(height: 20),
                     Expanded(child: _buildBody(context, state)),
                   ],
@@ -138,6 +140,55 @@ class _NotesPageState extends State<NotesPage> {
         ),
       ],
     );
+  }
+
+  // ══════════════════════════════════════════════
+  // Status Banner — Offline / Syncing indicator
+  // ══════════════════════════════════════════════
+  Widget _buildStatusBanner(NoteLoaded state) {
+    if (state.isSyncing) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+        color: AppColors.saveGreen.withOpacity(0.15),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                color: AppColors.saveGreen,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Syncing ${state.unsyncedCount} notes...',
+              style: const TextStyle(color: AppColors.saveGreen, fontSize: 12),
+            ),
+          ],
+        ),
+      );
+    }
+    if (!state.isOnline) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+        color: AppColors.discardRed.withOpacity(0.12),
+        child: Row(
+          children: [
+            const Icon(Icons.wifi_off, color: AppColors.discardRed, size: 14),
+            const SizedBox(width: 8),
+            Text(
+              'Offline — ${state.unsyncedCount > 0 ? "${state.unsyncedCount} unsynced" : "showing local data"}',
+              style: const TextStyle(color: AppColors.discardRed, fontSize: 12),
+            ),
+          ],
+        ),
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   // ══════════════════════════════════════════════
@@ -371,13 +422,13 @@ class _NoteSearchDelegate extends SearchDelegate<String> {
                   Icon(
                     Icons.search_off_rounded,
                     size: 80,
-                    color: Colors.white.withValues(alpha: 0.2),
+                    color: Colors.white.withOpacity(0.2),
                   ),
                   const SizedBox(height: 20),
                   Text(
                     'File not found. Try searching again.',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.6),
+                      color: Colors.white.withOpacity(0.6),
                       fontSize: 15,
                     ),
                   ),

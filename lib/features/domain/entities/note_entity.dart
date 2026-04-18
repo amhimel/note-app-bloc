@@ -7,6 +7,7 @@ class NoteEntity {
   final Color color;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final bool isSynced;
 
   NoteEntity({
     required this.id,
@@ -15,6 +16,7 @@ class NoteEntity {
     required this.color,
     required this.createdAt,
     required this.updatedAt,
+    this.isSynced = false,
   });
 
   NoteEntity copyWith({
@@ -24,6 +26,7 @@ class NoteEntity {
     Color? color,
     DateTime? createdAt,
     DateTime? updatedAt,
+    bool? isSynced,
   }) {
     return NoteEntity(
       id: id ?? this.id,
@@ -32,6 +35,7 @@ class NoteEntity {
       color: color ?? this.color,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      isSynced: isSynced ?? this.isSynced,
     );
   }
 
